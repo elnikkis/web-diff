@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Diff</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Web Diff</h1>
+    <p>Paste two texts and compare them side-by-side</p>
+  </header>
+  <main>
+    <section class="inputs">
+      <div class="input-group">
+        <label for="textA">Original</label>
+        <textarea id="textA" placeholder="Paste original text here…" spellcheck="false"></textarea>
+      </div>
+      <div class="input-group">
+        <label for="textB">Modified</label>
+        <textarea id="textB" placeholder="Paste modified text here…" spellcheck="false"></textarea>
+      </div>
+    </section>
+    <div class="controls">
+      <label>Mode:</label>
+      <label><input type="radio" name="mode" value="line" checked> Line</label>
+      <label><input type="radio" name="mode" value="word"> Word</label>
+      <label>
+        <input type="checkbox" id="ignoreWhitespace">
+        Ignore whitespace
+      </label>
+      <div class="spacer"></div>
+      <button id="clearBtn">Clear</button>
+      <button id="compareBtn">Compare</button>
+    </div>
+    <section class="output" id="output"></section>
+  </main>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jsdiff/5.2.0/diff.min.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
