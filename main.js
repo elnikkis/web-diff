@@ -28,6 +28,22 @@ function buildRow(lineNumA, lineNumB, prefix, text, wordDiffs, type) {
   </tr>`;
 }
 
+function buildSplitRow(lineNumA, textA, wordDiffsA, typeA, lineNumB, textB, wordDiffsB, typeB) {
+  const numA = lineNumA != null ? lineNumA : '';
+  const numB = lineNumB != null ? lineNumB : '';
+  const contentA = textA != null ? renderLineContent(textA, wordDiffsA, typeA) : '';
+  const contentB = textB != null ? renderLineContent(textB, wordDiffsB, typeB) : '';
+  const clsA = typeA || 'empty';
+  const clsB = typeB || 'empty';
+  return `<tr>
+    <td class="line-num split-${clsA}">${numA}</td>
+    <td class="line-content split-${clsA}">${contentA}</td>
+    <td class="split-gutter"></td>
+    <td class="line-num split-${clsB}">${numB}</td>
+    <td class="line-content split-${clsB}">${contentB}</td>
+  </tr>`;
+}
+
 document.getElementById('compareBtn').addEventListener('click', compare);
 document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('textA').value = '';
@@ -49,10 +65,7 @@ function prepareForWordDiff(text) {
     .join(` ${PARA} `);
 }
 
-function compareWords(textA, textB, output) {
-  const diffs = Diff.diffWords(prepareForWordDiff(textA), prepareForWordDiff(textB));
-
-  // Tokenize each diff part, preserving its type
+function tokenizeWordDiffs(diffs) {
   const allTokens = [];
   for (const part of diffs) {
     const type = part.removed ? 'removed' : part.added ? 'added' : 'unchanged';
@@ -61,10 +74,13 @@ function compareWords(textA, textB, output) {
       allTokens.push({ token, type });
     }
   }
+  return allTokens;
+}
 
-  let removedCount = 0, addedCount = 0;
-  let html = '<div class="word-diff-output"><p>';
+function renderWordTokens(allTokens, side) {
+  let html = '<p>';
   let needSpace = false;
+  let removedCount = 0, addedCount = 0;
 
   let i = 0;
   while (i < allTokens.length) {
@@ -85,7 +101,6 @@ function compareWords(textA, textB, output) {
       continue;
     }
 
-    // Collect consecutive changed tokens (no unchanged in between)
     const removedTokens = [];
     const addedTokens = [];
     while (i < allTokens.length && allTokens[i].type !== 'unchanged') {
@@ -96,59 +111,67 @@ function compareWords(textA, textB, output) {
       i++;
     }
 
-    // Render grouped: all removed first, then all added
-    for (let j = 0; j < removedTokens.length; j++) {
-      if (needSpace) html += ' ';
-      html += `<span class="word-removed">${escapeHtml(removedTokens[j])}</span>`;
-      needSpace = true;
+    if (side === 'left' || side === 'both') {
+      for (let j = 0; j < removedTokens.length; j++) {
+        if (needSpace) html += ' ';
+        html += `<span class="word-removed">${escapeHtml(removedTokens[j])}</span>`;
+        needSpace = true;
+      }
     }
-    for (let j = 0; j < addedTokens.length; j++) {
-      if (needSpace) html += ' ';
-      html += `<span class="word-added">${escapeHtml(addedTokens[j])}</span>`;
-      needSpace = true;
+    if (side === 'right' || side === 'both') {
+      for (let j = 0; j < addedTokens.length; j++) {
+        if (needSpace) html += ' ';
+        html += `<span class="word-added">${escapeHtml(addedTokens[j])}</span>`;
+        needSpace = true;
+      }
     }
     removedCount += removedTokens.length;
     addedCount += addedTokens.length;
   }
-  html += '</p></div>';
-
-  if (removedCount === 0 && addedCount === 0) {
-    output.innerHTML = '<div class="identical-msg">Texts are identical.</div>';
-    return;
-  }
-
-  const summary = `<div class="diff-summary">${removedCount} word${removedCount !== 1 ? 's' : ''} removed &nbsp;·&nbsp; ${addedCount} word${addedCount !== 1 ? 's' : ''} added</div>`;
-  output.innerHTML = summary + html;
+  html += '</p>';
+  return { html, removedCount, addedCount };
 }
 
-function compare() {
-  const ignoreWS = document.getElementById('ignoreWhitespace').checked;
-  const mode = document.querySelector('input[name="mode"]:checked').value;
-  let textA = document.getElementById('textA').value;
-  let textB = document.getElementById('textB').value;
+function compareWords(textA, textB, output, view) {
+  const diffs = Diff.diffWords(prepareForWordDiff(textA), prepareForWordDiff(textB));
+  const allTokens = tokenizeWordDiffs(diffs);
 
-  if (ignoreWS) {
-    textA = textA.split('\n').map(l => l.trim()).join('\n');
-    textB = textB.split('\n').map(l => l.trim()).join('\n');
+  if (view === 'split') {
+    const left = renderWordTokens(allTokens, 'left');
+    const right = renderWordTokens(allTokens, 'right');
+
+    if (left.removedCount === 0 && right.addedCount === 0) {
+      output.innerHTML = '<div class="identical-msg">Texts are identical.</div>';
+      return;
+    }
+
+    const summary = `<div class="diff-summary">${left.removedCount} word${left.removedCount !== 1 ? 's' : ''} removed &nbsp;·&nbsp; ${right.addedCount} word${right.addedCount !== 1 ? 's' : ''} added</div>`;
+    output.innerHTML = summary +
+      `<div class="word-diff-split">` +
+        `<div class="word-diff-pane word-diff-pane-left">${left.html}</div>` +
+        `<div class="word-diff-gutter"></div>` +
+        `<div class="word-diff-pane word-diff-pane-right">${right.html}</div>` +
+      `</div>`;
+  } else {
+    const result = renderWordTokens(allTokens, 'both');
+
+    if (result.removedCount === 0 && result.addedCount === 0) {
+      output.innerHTML = '<div class="identical-msg">Texts are identical.</div>';
+      return;
+    }
+
+    const summary = `<div class="diff-summary">${result.removedCount} word${result.removedCount !== 1 ? 's' : ''} removed &nbsp;·&nbsp; ${result.addedCount} word${result.addedCount !== 1 ? 's' : ''} added</div>`;
+    output.innerHTML = summary + `<div class="word-diff-output">${result.html}</div>`;
   }
+}
 
-  const output = document.getElementById('output');
-
-  if (mode === 'word') {
-    compareWords(textA, textB, output);
-    return;
-  }
-
+function buildChunks(textA, textB) {
   const lineDiffs = Diff.diffLines(textA, textB);
-
-  // Collect flat list of chunks: {type, lines[]}
-  // Then pair consecutive removed+added for word diff
   const chunks = [];
   for (const part of lineDiffs) {
     const rawLines = part.value.endsWith('\n')
       ? part.value.slice(0, -1).split('\n')
       : part.value.split('\n');
-    // Remove trailing empty string caused by trailing newline
     const lines = rawLines[rawLines.length - 1] === '' && part.value.endsWith('\n')
       ? rawLines.slice(0, -1)
       : rawLines;
@@ -157,7 +180,10 @@ function compare() {
     else if (part.added) chunks.push({ type: 'added', lines });
     else chunks.push({ type: 'unchanged', lines });
   }
+  return chunks;
+}
 
+function renderUnified(chunks) {
   let removedCount = 0, addedCount = 0;
   const rows = [];
   let counterA = 1, counterB = 1;
@@ -167,7 +193,6 @@ function compare() {
     const chunk = chunks[i];
 
     if (chunk.type === 'removed' && i + 1 < chunks.length && chunks[i + 1].type === 'added') {
-      // Pair for word-level diff
       const removedChunk = chunk;
       const addedChunk = chunks[i + 1];
       i += 2;
@@ -209,11 +234,86 @@ function compare() {
     }
   }
 
+  return { rows, removedCount, addedCount, tableClass: 'diff-table' };
+}
+
+function renderSplit(chunks) {
+  let removedCount = 0, addedCount = 0;
+  const rows = [];
+  let counterA = 1, counterB = 1;
+
+  let i = 0;
+  while (i < chunks.length) {
+    const chunk = chunks[i];
+
+    if (chunk.type === 'removed' && i + 1 < chunks.length && chunks[i + 1].type === 'added') {
+      const removedChunk = chunk;
+      const addedChunk = chunks[i + 1];
+      i += 2;
+
+      const maxLen = Math.max(removedChunk.lines.length, addedChunk.lines.length);
+      for (let j = 0; j < maxLen; j++) {
+        const lineA = j < removedChunk.lines.length ? removedChunk.lines[j] : null;
+        const lineB = j < addedChunk.lines.length ? addedChunk.lines[j] : null;
+        const wordDiffs = (lineA != null && lineB != null) ? Diff.diffWords(lineA, lineB) : null;
+        rows.push(buildSplitRow(
+          lineA != null ? counterA++ : null, lineA, wordDiffs, lineA != null ? 'removed' : null,
+          lineB != null ? counterB++ : null, lineB, wordDiffs, lineB != null ? 'added' : null
+        ));
+        if (lineA != null) removedCount++;
+        if (lineB != null) addedCount++;
+      }
+    } else if (chunk.type === 'removed') {
+      for (const line of chunk.lines) {
+        rows.push(buildSplitRow(counterA++, line, null, 'removed', null, null, null, null));
+        removedCount++;
+      }
+      i++;
+    } else if (chunk.type === 'added') {
+      for (const line of chunk.lines) {
+        rows.push(buildSplitRow(null, null, null, null, counterB++, line, null, 'added'));
+        addedCount++;
+      }
+      i++;
+    } else {
+      for (const line of chunk.lines) {
+        rows.push(buildSplitRow(counterA++, line, null, 'unchanged', counterB++, line, null, 'unchanged'));
+      }
+      i++;
+    }
+  }
+
+  return { rows, removedCount, addedCount, tableClass: 'diff-table diff-table-split' };
+}
+
+function compare() {
+  const ignoreWS = document.getElementById('ignoreWhitespace').checked;
+  const mode = document.querySelector('input[name="mode"]:checked').value;
+  const view = document.querySelector('input[name="view"]:checked').value;
+  let textA = document.getElementById('textA').value;
+  let textB = document.getElementById('textB').value;
+
+  if (ignoreWS) {
+    textA = textA.split('\n').map(l => l.trim()).join('\n');
+    textB = textB.split('\n').map(l => l.trim()).join('\n');
+  }
+
+  const output = document.getElementById('output');
+
+  if (mode === 'word') {
+    compareWords(textA, textB, output, view);
+    return;
+  }
+
+  const chunks = buildChunks(textA, textB);
+  const { rows, removedCount, addedCount, tableClass } =
+    view === 'split' ? renderSplit(chunks) : renderUnified(chunks);
+
   if (removedCount === 0 && addedCount === 0) {
     output.innerHTML = '<div class="identical-msg">Texts are identical.</div>';
     return;
   }
 
   const summary = `<div class="diff-summary">${removedCount} line${removedCount !== 1 ? 's' : ''} removed &nbsp;·&nbsp; ${addedCount} line${addedCount !== 1 ? 's' : ''} added</div>`;
-  output.innerHTML = summary + `<table class="diff-table"><tbody>${rows.join('')}</tbody></table>`;
+  output.innerHTML = summary + `<table class="${tableClass}"><tbody>${rows.join('')}</tbody></table>`;
 }
